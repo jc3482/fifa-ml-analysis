@@ -1,0 +1,1117 @@
+---
+title: "FIFA Player Data Analysis: Market Value Regression & Preferred Foot Classification"
+format: 
+   html:
+      embed-resources: true
+execute: 
+  warning: false
+  message: false
+  
+
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(janitor)
+library(skimr)
+library(caret)
+library(GGally)
+library(ggthemes)
+library(corrplot)
+library(glmnet)
+library(randomForest)
+library(xgboost)
+library(DALEX)
+library(ROCR)
+library(leaps)
+library(car)
+set.seed(123)
+```
+
+## 1. Introduction
+
+This report presents a comprehensive analysis of FIFA player data focused on two key questions:
+
+1. **Regression**: Predicting player market value using physical, technical, and reputational attributes.
+2. **Classification**: Predicting a player's preferred foot using dribbling and movement-related features.
+
+We apply multiple statistical learning techniques including feature selection, regularization, tree-based models, and dimensionality reduction.
+
+---
+
+## 2. Data Loading and Cleaning
+
+```{r}
+data <- read_csv("fifa_stats.csv") %>%
+  clean_names()
+
+# Clean currency columns
+convert_currency <- function(x) {
+  multiplier <- ifelse(str_detect(x, "M"), 1e6, 1e3)
+  as.numeric(str_remove_all(x, "€|K|M")) * multiplier
+}
+
+data <- data %>%
+  mutate(
+    value_eur = convert_currency(value),
+    wage_eur = convert_currency(wage),
+    height_cm = as.numeric(str_remove(height, "'") ) * 30.48 +
+                as.numeric(str_extract(height, "\\\\d+$")),
+    weight_kg = as.numeric(str_remove(weight, "lbs")) * 0.453592
+  )
+```
+
+---
+
+## 3. Regression: Predicting Player Market Value
+
+### 3.1 Feature Selection
+
+```{r}
+features <- data %>%
+  select(
+    value_eur, age, international_reputation, weak_foot, skill_moves,
+    crossing, finishing, dribbling, stamina, shot_power, long_shots,
+    ball_control, acceleration, sprint_speed, agility, reactions,
+    positioning, vision, strength, composure
+  ) %>% drop_na()
+```
+
+### 3.2 EDA
+
+```{r}
+corrplot(cor(select(features, -value_eur)), method = "color")
+```
+
+### 3.3 Feature Engineering and VIF
+
+```{r}
+lm_data <- features %>%
+  mutate(
+    age2 = age^2,
+    dribbling2 = dribbling^2,
+    reactions2 = reactions^2,
+    stamina2 = stamina^2
+  )
+
+lm_quad <- lm(value_eur ~ age + age2 + dribbling + dribbling2 + reactions + reactions2 + stamina + stamina2, data = lm_data)
+summary(lm_quad)
+
+vif(lm_quad)
+```
+
+### 3.4 Feature Selection
+
+```{r}
+
+best_forward_model <- regsubsets(value_eur ~ ., data = lm_data, nvmax = 10, method = "forward")
+summary(best_forward_model)
+```
+```{r}
+library(glmnet)
+
+x <- model.matrix(value_eur ~ ., data = lm_data)[, -1]
+y <- lm_data$value_eur
+
+# Lasso：alpha = 1
+cv_lasso <- cv.glmnet(x, y, alpha = 1, nfolds = 5)
+plot(cv_lasso)
+
+best_lambda <- cv_lasso$lambda.min
+lasso_coef <- coef(cv_lasso, s = "lambda.min")
+lasso_coef
+```
+```{r}
+plot(cv_lasso$glmnet.fit, xvar = "lambda", label = TRUE)
+abline(v = log(best_lambda), col = "red", lty = 2)
+
+```
+### 3.5 Modeling and Evaluation
+
+```{r}
+splitIndex <- createDataPartition(lm_data$value_eur, p = 0.8, list = FALSE)
+train_data <- lm_data[splitIndex, ]
+test_data <- lm_data[-splitIndex, ]
+```
+```{r}
+ctrl <- trainControl(method = "cv", number = 3)  # Use 3-fold CV for speed
+
+lm_model <- train(value_eur ~ ., data = train_data, method = "lm", trControl = ctrl)
+rf_model <- train(value_eur ~ ., data = train_data, method = "rf", trControl = ctrl, tuneLength = 2)
+xgb_model <- train(value_eur ~ ., data = train_data, method = "xgbTree", trControl = ctrl, tuneLength = 2)
+
+resamples(list(LM = lm_model, RF = rf_model, XGB = xgb_model)) %>% summary()
+``` 
+
+---
+
+## 4. Classification: Predicting Preferred Foot
+
+### 4.1 Data Preparation
+
+```{r}
+class_data <- data %>%
+  filter(preferred_foot %in% c("Left", "Right")) %>%
+  mutate(preferred_foot = factor(preferred_foot)) %>%
+  select(
+    preferred_foot, dribbling, agility, positioning, acceleration, sprint_speed,
+    balance, ball_control, curve, vision, composure, strength,
+    reactions, short_passing, long_passing, crossing
+  ) %>% drop_na()
+```
+
+### 4.2 Train/Test Split
+
+```{r}
+splitIndex <- createDataPartition(class_data$preferred_foot, p = 0.8, list = FALSE)
+train <- class_data[splitIndex, ]
+test <- class_data[-splitIndex, ]
+train <- train %>% mutate(preferred_foot = factor(preferred_foot, levels = c("Left", "Right")))
+test <- test %>% mutate(preferred_foot = factor(preferred_foot, levels = c("Left", "Right")))
+```
+
+### 4.3 Logistic Regression with Lasso/ElasticNet
+
+```{r}
+x <- model.matrix(preferred_foot ~ ., train)[, -1]
+y <- ifelse(train$preferred_foot == "Right", 1, 0)
+
+cv_lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial", type.measure = "auc")
+cv_elastic <- cv.glmnet(x, y, alpha = 0.5, family = "binomial", type.measure = "auc")
+```
+
+### 4.4 PCA Visualization
+
+```{r}
+pca_data <- prcomp(select(train, -preferred_foot), scale. = TRUE)
+pca_df <- as.data.frame(pca_data$x[, 1:2])
+pca_df$foot <- train$preferred_foot
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = foot)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "PCA Visualization of Preferred Foot Classes")
+```
+
+### 4.5 Regularized Logistic Regression with Tuning
+
+```{r}
+grid <- expand.grid(
+  alpha = c(0, 0.5, 1),
+  lambda = 10^seq(-3, 1, length = 20)
+)
+
+ctrl <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+glmnet_model <- train(
+  preferred_foot ~ ., data = train,
+  method = "glmnet",
+  trControl = ctrl,
+  metric = "ROC",
+  tuneGrid = grid
+)
+
+plot(glmnet_model)
+glmnet_model$bestTune
+```
+
+### 4.6 Final Evaluation
+
+```{r}
+x_test <- model.matrix(preferred_foot ~ ., test)[, -1]
+pred_probs <- predict(glmnet_model$finalModel, newx = x_test, s = glmnet_model$bestTune$lambda, type = "response")
+pred_class <- ifelse(pred_probs > 0.5, "Right", "Left") %>% factor(levels = c("Left", "Right"))
+
+confusionMatrix(pred_class, test$preferred_foot)
+```
+
+### 4.7 Random Forest, XGBoost, and SVM Models
+
+```{r}
+ctrl_class <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+# Random Forest
+rf_class <- train(preferred_foot ~ ., data = train, method = "rf", trControl = ctrl_class, metric = "ROC")
+
+# define XGBoost grid
+xgb_grid <- expand.grid(
+  nrounds = 100,          
+  max_depth = 6,            
+  eta = 0.3,                
+  gamma = 0,                
+  colsample_bytree = 1,     
+  min_child_weight = 1,     
+  subsample = 1             
+)
+
+# train XGBoost
+xgb_class <- train(
+  preferred_foot ~ ., 
+  data = train, 
+  method = "xgbTree", 
+  trControl = ctrl_class, 
+  tuneGrid = xgb_grid,
+  metric = "ROC"
+)
+
+# SVM
+svm_class <- train(preferred_foot ~ ., data = train, method = "svmRadial", trControl = ctrl_class, metric = "ROC")
+
+# Compare models
+resamples(list(RF = rf_class, XGB = xgb_class, SVM = svm_class)) %>% summary()
+```
+
+### 4.8 PCA Visualization Revisited
+
+```{r}
+# Already scaled in earlier step, reuse or repeat PCA if needed
+pca_data <- prcomp(select(train, -preferred_foot), scale. = TRUE)
+pca_df <- as.data.frame(pca_data$x[, 1:2])
+pca_df$foot <- train$preferred_foot
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = foot)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "PCA Visualization: Preferred Foot Distribution") +
+  theme_minimal()
+```
+
+### 4.9 Threshold Adjustment for Lasso Model
+
+```{r}
+library(pROC)
+
+# Predict probabilities
+prob_lasso <- predict(glmnet_model$finalModel, newx = x_test, s = glmnet_model$bestTune$lambda, type = "response")
+
+# Adjust classification threshold (e.g. 0.3 instead of 0.5)
+pred_lasso_custom <- ifelse(prob_lasso > 0.3, "Right", "Left") %>% factor(levels = c("Left", "Right"))
+
+# Evaluate new prediction
+confusionMatrix(pred_lasso_custom, test$preferred_foot)
+
+# ROC Curve
+roc_obj <- roc(test$preferred_foot, as.numeric(prob_lasso))
+plot(roc_obj, col = "darkblue", lwd = 2)
+coords(roc_obj, x = "best", input = "threshold", best.method = "closest.topleft")
+```
+---
+
+
+## 5. Clustering: Player Archetypes using t-SNE & K-means
+
+This section explores natural groupings of FIFA players using t-SNE for dimensionality reduction and K-means for clustering, analyzing both datasets with and without goalkeepers.
+
+### 5.1 Data Preparation
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(janitor)
+library(caret)
+library(Rtsne)
+library(factoextra)
+library(cluster)
+library(ggthemes)
+library(gridExtra)
+library(corrplot)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Load data
+data <- read_csv("fifa_eda_stats.csv") %>%
+  clean_names()
+
+# Clean currency columns
+convert_currency <- function(x) {
+  multiplier <- ifelse(str_detect(x, "M"), 1e6, 1e3)
+  as.numeric(str_remove_all(x, "€|K|M")) * multiplier
+}
+
+data <- data %>%
+  mutate(
+    value_eur = convert_currency(value),
+    wage_eur = convert_currency(wage),
+    height_cm = as.numeric(str_remove(height, "'") ) * 30.48 +
+                as.numeric(str_extract(height, "\\d+$")),
+    weight_kg = as.numeric(str_remove(weight, "lbs")) * 0.453592
+  )
+
+# Create position categories
+data <- data %>%
+  mutate(position_category = case_when(
+    str_detect(position, "GK") ~ "Goalkeeper",
+    str_detect(position, "CB|RB|LB|RWB|LWB") ~ "Defender",
+    str_detect(position, "CDM|CM|CAM|RM|LM") ~ "Midfielder",
+    str_detect(position, "ST|CF|RW|LW") ~ "Forward",
+    TRUE ~ "Other"
+  ))
+
+# Create two different datasets (with and without goalkeepers)
+# Dataset 1: All players including goalkeepers
+all_players <- data %>%
+  filter(!is.na(position)) %>%
+  select(
+    id, name, position, position_category, overall, 
+    finishing, dribbling, crossing, ball_control,
+    short_passing, long_passing, acceleration, sprint_speed,
+    agility, reactions, balance, shot_power, 
+    stamina, strength, long_shots, marking,
+    standing_tackle, sliding_tackle, gk_diving, gk_handling,
+    gk_kicking, gk_positioning, gk_reflexes
+  ) %>% 
+  drop_na()
+
+# Dataset 2: Only field players (no goalkeepers)
+field_players <- data %>%
+  filter(!is.na(position), position_category != "Goalkeeper") %>%
+  select(
+    id, name, position, position_category, overall, 
+    finishing, dribbling, crossing, ball_control,
+    short_passing, long_passing, acceleration, sprint_speed,
+    agility, reactions, balance, shot_power, 
+    stamina, strength, long_shots, marking,
+    standing_tackle, sliding_tackle
+  ) %>% 
+  drop_na()
+
+# Create numeric datasets for analysis
+all_players_data <- all_players %>%
+  select(-id, -name, -position, -position_category)
+
+field_players_data <- field_players %>%
+  select(-id, -name, -position, -position_category)
+
+# Scale the data
+all_players_scaled <- scale(all_players_data)
+field_players_scaled <- scale(field_players_data)
+```
+
+### 5.2 Analysis with All Players (Including Goalkeepers)
+
+#### 5.2.1 t-SNE Dimensionality Reduction
+
+```{r}
+# Check for duplicates in all_players_scaled
+all_duplicates <- duplicated(all_players_scaled)
+sum(all_duplicates)  # Number of duplicates
+
+# Remove duplicates for t-SNE
+all_players_unique <- all_players_scaled[!all_duplicates, ]
+all_original_indices <- which(!all_duplicates)
+
+# Perform t-SNE on unique data
+# Adjust perplexity to be less than the number of unique rows
+perplexity_all <- min(30, nrow(all_players_unique) - 1)
+
+tsne_all <- Rtsne(all_players_unique, dims = 2, 
+                  perplexity = perplexity_all, 
+                  verbose = FALSE, 
+                  check_duplicates = FALSE)
+
+# Create t-SNE dataframe for unique points
+tsne_all_coords <- as.data.frame(tsne_all$Y)
+colnames(tsne_all_coords) <- c("tSNE1", "tSNE2")
+tsne_all_coords$position_category <- all_players$position_category[all_original_indices]
+
+# Create full t-SNE dataframe for all points
+tsne_all_df <- data.frame(
+  tSNE1 = numeric(nrow(all_players)),
+  tSNE2 = numeric(nrow(all_players)),
+  position_category = all_players$position_category
+)
+
+# Fill in coordinates for unique points
+tsne_all_df[all_original_indices, c("tSNE1", "tSNE2")] <- tsne_all_coords[, c("tSNE1", "tSNE2")]
+
+# Handle duplicate points if any
+if(sum(all_duplicates) > 0) {
+  # Create mapping for duplicates
+  row_mapping <- data.frame(
+    original_index = 1:nrow(all_players_scaled),
+    is_duplicate = all_duplicates,
+    unique_index = NA
+  )
+  
+  for(i in which(all_duplicates)) {
+    for(j in all_original_indices) {
+      if(all(all_players_scaled[i,] == all_players_scaled[j,])) {
+        row_mapping$unique_index[i] <- j
+        tsne_all_df[i, c("tSNE1", "tSNE2")] <- tsne_all_df[j, c("tSNE1", "tSNE2")]
+        break
+      }
+    }
+  }
+}
+
+# Visualize t-SNE results by position
+ggplot(tsne_all_df, aes(x = tSNE1, y = tSNE2, color = position_category)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "t-SNE: All Players Distribution",
+       color = "Position Category")
+```
+
+#### 5.2.2 K-means Clustering (k=4)
+
+```{r}
+# Perform K-means clustering with k=4 on all players
+k_all <- 4
+km_all <- kmeans(all_players_scaled, centers = k_all, nstart = 25)
+
+# Add cluster assignments to t-SNE dataframe
+tsne_all_df$cluster <- as.factor(km_all$cluster)
+
+# Visualize clusters in t-SNE space
+ggplot(tsne_all_df, aes(x = tSNE1, y = tSNE2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "K-means Clustering (k=4) of All Players in t-SNE Space",
+       color = "Cluster")
+
+# Create a combined visualization with both cluster and position
+p1 <- ggplot(tsne_all_df, aes(x = tSNE1, y = tSNE2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Clusters", color = "Cluster")
+
+p2 <- ggplot(tsne_all_df, aes(x = tSNE1, y = tSNE2, color = position_category)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Positions", color = "Position")
+
+grid.arrange(p1, p2, ncol = 2, top = "Comparing Clusters vs. Positions (All Players)")
+
+# Add cluster info to original data
+all_players$cluster <- as.factor(km_all$cluster)
+
+# Examine cluster centroids
+all_centers <- as.data.frame(km_all$centers)
+all_centers$cluster <- 1:k_all
+all_centers_long <- all_centers %>%
+  pivot_longer(cols = -cluster, names_to = "attribute", values_to = "value")
+
+# Visualize cluster centroids
+ggplot(all_centers_long, aes(x = attribute, y = value, color = as.factor(cluster))) +
+  geom_line(aes(group = cluster)) +
+  geom_point() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Cluster Centroids (All Players)",
+       color = "Cluster",
+       x = "Attribute",
+       y = "Standardized Value")
+
+# Examine position distribution within clusters
+all_position_dist <- all_players %>%
+  count(cluster, position_category) %>%
+  group_by(cluster) %>%
+  mutate(proportion = n / sum(n))
+
+# Visualize position distribution
+ggplot(all_position_dist, aes(x = cluster, y = proportion, fill = position_category)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(proportion * 100), "%")), 
+            position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  theme_minimal() +
+  labs(title = "Position Distribution by Cluster (All Players)",
+       x = "Cluster",
+       y = "Proportion",
+       fill = "Position Category")
+
+# Create cluster profiles
+all_cluster_profiles <- all_players %>%
+  group_by(cluster) %>%
+  summarise(
+    count = n(),
+    avg_overall = mean(overall),
+    avg_finishing = mean(finishing),
+    avg_dribbling = mean(dribbling),
+    avg_passing = mean((short_passing + long_passing)/2),
+    avg_speed = mean((acceleration + sprint_speed)/2),
+    avg_defending = mean((marking + standing_tackle + sliding_tackle)/3),
+    avg_goalkeeping = ifelse(any(position_category == "Goalkeeper"),
+                            mean((gk_diving + gk_handling + gk_reflexes + gk_positioning)/4), 0),
+    main_position = names(which.max(table(position_category))),
+    pct_main_position = max(table(position_category)) / n() * 100
+  )
+
+# Display cluster profiles
+all_cluster_profiles
+
+# Create descriptive names for all player clusters
+all_cluster_names <- c(
+  "1" = "Technical Playmakers",
+  "2" = "Defensive Specialists",
+  "3" = "Goalkeepers",
+  "4" = "Physical Forwards"
+)
+
+# Map clusters to descriptive names
+all_players <- all_players %>%
+  mutate(cluster_name = all_cluster_names[as.character(cluster)])
+
+# Find top players in each cluster
+all_top_players <- all_players %>%
+  group_by(cluster, cluster_name) %>%
+  slice_max(order_by = overall, n = 10) %>%
+  select(name, position, overall, cluster_name) %>%
+  arrange(cluster, desc(overall))
+
+# Display top players by cluster
+all_top_players
+```
+
+### 5.3 Analysis with Field Players Only (Excluding Goalkeepers)
+
+#### 5.3.1 t-SNE Dimensionality Reduction
+
+```{r}
+# Check for duplicates in field_players_scaled
+field_duplicates <- duplicated(field_players_scaled)
+sum(field_duplicates)  # Number of duplicates
+
+# Remove duplicates for t-SNE
+field_players_unique <- field_players_scaled[!field_duplicates, ]
+field_original_indices <- which(!field_duplicates)
+
+# Perform t-SNE on unique data
+perplexity_field <- min(30, nrow(field_players_unique) - 1)
+
+tsne_field <- Rtsne(field_players_unique, dims = 2, 
+                    perplexity = perplexity_field, 
+                    verbose = FALSE, 
+                    check_duplicates = FALSE)
+
+# Create t-SNE dataframe for unique points
+tsne_field_coords <- as.data.frame(tsne_field$Y)
+colnames(tsne_field_coords) <- c("tSNE1", "tSNE2")
+tsne_field_coords$position_category <- field_players$position_category[field_original_indices]
+
+# Create full t-SNE dataframe for all field players
+tsne_field_df <- data.frame(
+  tSNE1 = numeric(nrow(field_players)),
+  tSNE2 = numeric(nrow(field_players)),
+  position_category = field_players$position_category
+)
+
+# Fill in coordinates for unique points
+tsne_field_df[field_original_indices, c("tSNE1", "tSNE2")] <- tsne_field_coords[, c("tSNE1", "tSNE2")]
+
+# Handle duplicate points if any
+if(sum(field_duplicates) > 0) {
+  # Create mapping for duplicates
+  field_row_mapping <- data.frame(
+    original_index = 1:nrow(field_players_scaled),
+    is_duplicate = field_duplicates,
+    unique_index = NA
+  )
+  
+  for(i in which(field_duplicates)) {
+    for(j in field_original_indices) {
+      if(all(field_players_scaled[i,] == field_players_scaled[j,])) {
+        field_row_mapping$unique_index[i] <- j
+        tsne_field_df[i, c("tSNE1", "tSNE2")] <- tsne_field_df[j, c("tSNE1", "tSNE2")]
+        break
+      }
+    }
+  }
+}
+
+# Visualize t-SNE results by position
+ggplot(tsne_field_df, aes(x = tSNE1, y = tSNE2, color = position_category)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "t-SNE: Field Players Distribution",
+       color = "Position Category")
+```
+
+#### 5.3.2 K-means Clustering (k=3)
+
+```{r}
+# Perform K-means clustering with k=3 on field players
+k_field <- 3
+km_field <- kmeans(field_players_scaled, centers = k_field, nstart = 25)
+
+# Add cluster assignments to t-SNE dataframe
+tsne_field_df$cluster <- as.factor(km_field$cluster)
+
+# Visualize clusters in t-SNE space
+ggplot(tsne_field_df, aes(x = tSNE1, y = tSNE2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "K-means Clustering (k=3) of Field Players in t-SNE Space",
+       color = "Cluster")
+
+# Create a combined visualization with both cluster and position
+p3 <- ggplot(tsne_field_df, aes(x = tSNE1, y = tSNE2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Clusters", color = "Cluster")
+
+p4 <- ggplot(tsne_field_df, aes(x = tSNE1, y = tSNE2, color = position_category)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Positions", color = "Position")
+
+grid.arrange(p3, p4, ncol = 2, top = "Comparing Clusters vs. Positions (Field Players)")
+
+# Add cluster info to original data
+field_players$cluster <- as.factor(km_field$cluster)
+
+# Examine cluster centroids
+field_centers <- as.data.frame(km_field$centers)
+field_centers$cluster <- 1:k_field
+field_centers_long <- field_centers %>%
+  pivot_longer(cols = -cluster, names_to = "attribute", values_to = "value")
+
+# Visualize cluster centroids
+ggplot(field_centers_long, aes(x = attribute, y = value, color = as.factor(cluster))) +
+  geom_line(aes(group = cluster)) +
+  geom_point() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Cluster Centroids (Field Players)",
+       color = "Cluster",
+       x = "Attribute",
+       y = "Standardized Value")
+
+# Examine position distribution within clusters
+field_position_dist <- field_players %>%
+  count(cluster, position_category) %>%
+  group_by(cluster) %>%
+  mutate(proportion = n / sum(n))
+
+# Visualize position distribution
+ggplot(field_position_dist, aes(x = cluster, y = proportion, fill = position_category)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(proportion * 100), "%")), 
+            position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  theme_minimal() +
+  labs(title = "Position Distribution by Cluster (Field Players)",
+       x = "Cluster",
+       y = "Proportion",
+       fill = "Position Category")
+
+# Create cluster profiles
+field_cluster_profiles <- field_players %>%
+  group_by(cluster) %>%
+  summarise(
+    count = n(),
+    avg_overall = mean(overall),
+    avg_finishing = mean(finishing),
+    avg_dribbling = mean(dribbling),
+    avg_passing = mean((short_passing + long_passing)/2),
+    avg_speed = mean((acceleration + sprint_speed)/2),
+    avg_defending = mean((marking + standing_tackle + sliding_tackle)/3),
+    main_position = names(which.max(table(position_category))),
+    pct_main_position = max(table(position_category)) / n() * 100
+  )
+
+# Display cluster profiles
+field_cluster_profiles
+
+# Create descriptive names for field player clusters
+field_cluster_names <- c(
+  "1" = "Technical Attackers",
+  "2" = "Balanced Midfielders",
+  "3" = "Defensive Specialists"
+)
+
+# Map clusters to descriptive names
+field_players <- field_players %>%
+  mutate(cluster_name = field_cluster_names[as.character(cluster)])
+
+# Find top players in each cluster
+field_top_players <- field_players %>%
+  group_by(cluster, cluster_name) %>%
+  slice_max(order_by = overall, n = 10) %>%
+  select(name, position, overall, cluster_name) %>%
+  arrange(cluster, desc(overall))
+
+# Display top players by cluster
+field_top_players
+```
+
+### 5.4 Comparison of Clusters with and without Goalkeepers
+
+```{r}
+# Create radar charts for comparing cluster profiles
+
+# Select key attributes for radar comparison - All players
+all_radar_attributes <- c("finishing", "dribbling", "short_passing", "long_passing", 
+                         "acceleration", "sprint_speed", "stamina", "marking", 
+                         "standing_tackle", "strength", "gk_reflexes")
+
+# Calculate mean values for each attribute by cluster - All players
+all_radar_data <- all_players %>%
+  group_by(cluster) %>%
+  summarise(across(all_of(all_radar_attributes), mean)) %>%
+  pivot_longer(cols = -cluster, names_to = "attribute", values_to = "value") %>%
+  mutate(cluster_name = all_cluster_names[as.character(cluster)])
+
+# Plot the radar chart - All players
+ggplot(all_radar_data, aes(x = attribute, y = value, color = cluster_name, group = cluster_name)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Attribute Profiles by Player Archetype (All Players)",
+       color = "Player Archetype",
+       x = "Attribute",
+       y = "Average Value")
+
+# Select key attributes for radar comparison - Field players
+field_radar_attributes <- c("finishing", "dribbling", "short_passing", "long_passing", 
+                           "acceleration", "sprint_speed", "stamina", "marking", 
+                           "standing_tackle", "strength")
+
+# Calculate mean values for each attribute by cluster - Field players
+field_radar_data <- field_players %>%
+  group_by(cluster) %>%
+  summarise(across(all_of(field_radar_attributes), mean)) %>%
+  pivot_longer(cols = -cluster, names_to = "attribute", values_to = "value") %>%
+  mutate(cluster_name = field_cluster_names[as.character(cluster)])
+
+# Plot the radar chart - Field players
+ggplot(field_radar_data, aes(x = attribute, y = value, color = cluster_name, group = cluster_name)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Attribute Profiles by Player Archetype (Field Players)",
+       color = "Player Archetype",
+       x = "Attribute",
+       y = "Average Value")
+```
+
+## 6. Classification: Predicting Superstar Status 
+
+### 6.1 Data Preparation
+
+```{r}
+
+data <- read_csv("fifa_stats.csv") %>%
+  clean_names()
+
+class_data <- data %>%
+  filter(!is.na(international_reputation)) %>%
+  mutate(super_star = factor(ifelse(international_reputation >= 3, "Star", "Not_Star"))) %>%
+  select(
+    super_star,
+    crossing, finishing, heading_accuracy, short_passing, volleys,
+    dribbling, curve, fk_accuracy, long_passing, ball_control,
+    acceleration, sprint_speed, agility, reactions, balance,
+    shot_power, jumping, stamina, strength, long_shots,
+    aggression, interceptions, positioning, vision, penalties,
+    composure, marking, standing_tackle, sliding_tackle
+  ) %>%
+  drop_na()
+
+
+```
+
+### 6.2 Train/Test Split
+```{r}
+splitIndex <- createDataPartition(class_data$super_star, p = 0.8, list = FALSE)
+train <- class_data[splitIndex, ]
+test <- class_data[-splitIndex, ]
+train <- train %>% mutate(super_star = factor(super_star, levels = c("Not_Star", "Star")))
+test <- test %>% mutate(super_star = factor(super_star, levels = c("Not_Star", "Star")))
+```
+
+### 6.3 Logistic Regression with Lasso/ElasticNet
+
+```{r}
+x <- model.matrix(super_star ~ ., train)[, -1]
+y <- ifelse(train$super_star == "Star", 1, 0)
+
+cv_lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial", type.measure = "auc")
+cv_elastic <- cv.glmnet(x, y, alpha = 0.5, family = "binomial", type.measure = "auc")
+
+```
+
+
+### 6.4 PCA Visualization
+```{r}
+pca_data <- prcomp(select(train, -super_star), scale. = TRUE)
+pca_df <- as.data.frame(pca_data$x[, 1:2])
+pca_df$class <- train$super_star
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = class)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "PCA Visualization of Superstar Status")
+
+```
+
+### 6.5 Regularized Logistic Regression with Tuning
+
+```{r}
+grid <- expand.grid(
+  alpha = c(0, 0.5, 1),
+  lambda = 10^seq(-3, 1, length = 20)
+)
+
+ctrl <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+glmnet_model <- train(
+  super_star ~ ., data = train,
+  method = "glmnet",
+  trControl = ctrl,
+  metric = "ROC",
+  tuneGrid = grid
+)
+
+plot(glmnet_model)
+glmnet_model$bestTune
+
+```
+
+### 6.6 Final Evaluation
+
+
+```{r}
+x_test <- model.matrix(super_star ~ ., test)[, -1]
+pred_probs <- predict(glmnet_model$finalModel, newx = x_test, s = glmnet_model$bestTune$lambda, type = "response")
+pred_class <- ifelse(pred_probs > 0.5, "Star", "Not_Star") %>% factor(levels = c("Not_Star", "Star"))
+
+confusionMatrix(pred_class, test$super_star)
+
+```
+
+### 6.7 Random Forest, XGBoost, and SVM Models
+
+
+```{r}
+ctrl_class <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+# Random Forest
+rf_class <- train(super_star ~ ., data = train, method = "rf", trControl = ctrl_class, metric = "ROC")
+
+# define XGBoost grid
+xgb_grid <- expand.grid(
+  nrounds = 100,          
+  max_depth = 6,            
+  eta = 0.3,                
+  gamma = 0,                
+  colsample_bytree = 1,     
+  min_child_weight = 1,     
+  subsample = 1             
+)
+
+# train XGBoost
+xgb_class <- train(
+  super_star ~ ., 
+  data = train, 
+  method = "xgbTree", 
+  trControl = ctrl_class, 
+  tuneGrid = xgb_grid,
+  metric = "ROC"
+)
+
+# SVM
+svm_class <- train(super_star ~ ., data = train, method = "svmRadial", trControl = ctrl_class, metric = "ROC")
+
+# Compare models
+resamples(list(RF = rf_class, XGB = xgb_class, SVM = svm_class)) %>% summary()
+
+
+```
+
+### 6.8 PCA Visualization Revisited
+
+```{r}
+pca_data <- prcomp(select(train, -super_star), scale. = TRUE)
+pca_df <- as.data.frame(pca_data$x[, 1:2])
+pca_df$class <- train$super_star
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = class)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "PCA Visualization: Superstar Classification") +
+  theme_minimal()
+
+```
+
+### 6.9 Threshold Adjustment for Lasso Model
+
+```{r}
+library(pROC)
+
+# Predict probabilities
+prob_lasso <- predict(glmnet_model$finalModel, newx = x_test, s = glmnet_model$bestTune$lambda, type = "response")
+
+# Adjust classification threshold (e.g. 0.3 instead of 0.5)
+pred_lasso_custom <- ifelse(prob_lasso > 0.3, "Star", "Not_Star") %>% factor(levels = c("Not_Star", "Star"))
+
+# Evaluate new prediction
+confusionMatrix(pred_lasso_custom, test$super_star)
+
+# ROC Curve
+roc_obj <- roc(test$super_star, as.numeric(prob_lasso))
+plot(roc_obj, col = "darkred", lwd = 2)
+coords(roc_obj, x = "best", input = "threshold", best.method = "closest.topleft")
+
+
+```
+
+## 7. Classification: Predicting Player Position (Multiclass)
+### 7.1 Data Preparation
+
+```{r}
+position_data <- data %>%
+  filter(!is.na(position)) %>%
+  mutate(position = factor(position)) %>%
+  select(
+    position,
+    crossing, finishing, heading_accuracy, short_passing, volleys,
+    dribbling, curve, fk_accuracy, long_passing, ball_control,
+    acceleration, sprint_speed, agility, reactions, balance,
+    shot_power, jumping, stamina, strength, long_shots,
+    aggression, interceptions, positioning, vision, penalties,
+    composure, marking, standing_tackle, sliding_tackle
+  ) %>%
+  drop_na()
+
+```
+
+### 7.2 Train/Test Split
+
+```{r}
+splitIndex <- createDataPartition(position_data$position, p = 0.8, list = FALSE)
+train <- position_data[splitIndex, ]
+test <- position_data[-splitIndex, ]
+
+
+```
+
+### 7.3 Multinomial Logistic Regression
+
+```{r}
+
+# Standardize features
+train_scaled <- train %>%
+  mutate(across(-position, scale))
+test_scaled <- test %>%
+  mutate(across(-position, scale))
+
+# Fit model
+multi_logreg <- multinom(position ~ ., data = train_scaled, maxit = 500)
+
+# Predictions
+logreg_preds <- predict(multi_logreg, newdata = test_scaled)
+confusionMatrix(logreg_preds, test_scaled$position)
+
+```
+
+### 7.4 Confusion Matrix Plot
+
+```{r}
+logreg_cm <- table(Predicted = logreg_preds, Actual = test_scaled$position)
+ggplot(as.data.frame(logreg_cm), aes(x = Actual, y = Predicted)) +
+  geom_tile(aes(fill = Freq)) +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  theme_minimal() +
+  labs(title = "Confusion Matrix (Logistic Regression)", x = "True", y = "Predicted")
+
+```
+
+### 7.5 Feature Importance
+```{r}
+coefs <- summary(multi_logreg)$coefficients
+avg_coef <- apply(abs(coefs), 2, mean)
+importance <- sort(avg_coef, decreasing = TRUE)[1:10]
+
+barplot(importance, horiz = TRUE, las = 1, main = "Top 10 Most Important Features")
+
+```
+
+### 7.6 Support Vector Machine
+
+```{r}
+coefs <- summary(multi_logreg)$coefficients
+avg_coef <- apply(abs(coefs), 2, mean)
+importance <- sort(avg_coef, decreasing = TRUE)[1:10]
+
+barplot(importance, horiz = TRUE, las = 1, main = "Top 10 Most Important Features")
+
+```
+
+### 7.7 Confusion Matrix Plot (SVM)
+
+```{r}
+svm_cm <- table(Predicted = svm_preds, Actual = test_scaled$position)
+ggplot(as.data.frame(svm_cm), aes(x = Actual, y = Predicted)) +
+  geom_tile(aes(fill = Freq)) +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "white", high = "forestgreen") +
+  theme_minimal() +
+  labs(title = "Confusion Matrix (SVM)", x = "True", y = "Predicted")
+
+```
+
+### 7.8 Neural Network (nnet package)
+
+```{r}
+library(nnet)
+
+# Convert target to numeric classes
+train_scaled$pos_numeric <- as.integer(train_scaled$position)
+test_scaled$pos_numeric <- as.integer(test_scaled$position)
+
+nn_model <- nnet(pos_numeric ~ . -position, data = train_scaled, size = 64, maxit = 200, trace = FALSE, softmax = TRUE)
+
+nn_preds <- predict(nn_model, newdata = test_scaled, type = "class")
+nn_preds_factor <- factor(nn_preds, levels = 1:length(levels(train_scaled$position)), labels = levels(train_scaled$position))
+
+confusionMatrix(nn_preds_factor, test_scaled$position)
+
+```
+
+### 7.9 Confusion Matrix Plot (Neural Net)
+```{r}
+nn_cm <- table(Predicted = nn_preds_factor, Actual = test_scaled$position)
+ggplot(as.data.frame(nn_cm), aes(x = Actual, y = Predicted)) +
+  geom_tile(aes(fill = Freq)) +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "white", high = "darkorange") +
+  theme_minimal() +
+  labs(title = "Confusion Matrix (Neural Network)", x = "True", y = "Predicted")
+
+```
+
+### 7.10 Radar Chart Comparing 3 Positions
+
+
+```{r}
+compare_positions <- c("st", "cm", "cb")
+
+avg_stats <- position_data %>%
+  filter(position %in% compare_positions) %>%
+  group_by(position) %>%
+  summarise(across(-position, mean, na.rm = TRUE))
+
+radar_data <- as.data.frame(t(avg_stats[-1]))
+colnames(radar_data) <- avg_stats$position
+radar_data$feature <- rownames(radar_data)
+
+library(fmsb)
+radar_plot_data <- rbind(apply(radar_data[, compare_positions], 2, max),
+                         apply(radar_data[, compare_positions], 2, min),
+                         radar_data[, compare_positions])
+
+radarchart(radar_plot_data, axistype = 1,
+           title = "Radar Chart: Comparing Player Types by Position",
+           pcol = c("red", "blue", "green"), plty = 1)
+legend("topright", legend = compare_positions, col = c("red", "blue", "green"), lty = 1)
+
+```
+
+
+
+---
+## 5. Conclusion
