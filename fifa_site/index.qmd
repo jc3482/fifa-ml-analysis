@@ -1,0 +1,106 @@
+---
+title: "FIFA Player Analysis"
+author:
+  - name: Stacy Che, Ping Hill, Hongzhe Wang, Tongrui Zhang 
+    affiliation: Georgetown University MS DSAN 26'
+published: 2025-04-28
+abstract: |
+  This project explores player-level data in the FIFA dataset to uncover how different attributes relate to player market value and role. We apply machine learning methods for regression, classification, and clustering to understand performance drivers and position-based patterns.
+keywords: [FIFA, Soccer Analytics, Regression, Classification, Clustering]
+format:
+  html:
+    embed-resources: true
+    toc: true
+    theme: cosmo
+---
+
+# Abstract
+
+We investigate whether data-driven models can predict player market value, identify star players, and classify field positions using the FIFA dataset. Applying regression, classification, and clustering techniques, we uncover patterns in player attributes that help inform player valuation and scouting decisions.
+
+# Introduction
+- **Problem**: Can data science help quantify and classify soccer talent?
+- **Significance**: Accurate modeling helps scouts, analysts, and fans understand player value beyond surface stats.
+- **Background**: Prior studies show player stats can explain market trends and positional dynamics.
+- **Objectives**: Predict market value, classify stars vs. non-stars, classify player position, and cluster players into roles.
+
+
+
+# data
+## Dataset Overview
+- Source: FIFA player dataset
+- Size: ~18,000 players
+- Key fields: `value_eur`, `position`, `international_reputation`, `attributes` (acceleration, shot power, dribbling, etc.)
+
+## Preprocessing
+- Removed missing/duplicate entries
+- Standardized numeric features (scaling)
+- Categorical conversion for classification (`Star` vs. `Not_Star`)
+
+## Feature Categories
+- Physical: stamina, strength, sprint_speed
+- Technical: dribbling, ball_control, finishing
+- Mental: vision, composure, reactions
+
+
+
+# Methods
+## Regression Task
+**Goal**: Predict player's market value (`value_eur`)
+
+- **Baseline Model**: Linear regression with squared and interaction terms
+- **Regularization**: Lasso (α = 1) and ElasticNet to reduce multicollinearity
+- **Models Compared**: Linear, Random Forest, XGBoost
+
+## Binary Classification
+**Goal**: Classify players as `Star` if international reputation ≥ 3
+
+- Models: Logistic Regression, SVM, Random Forest, XGBoost
+- Evaluation: Confusion Matrix, ROC, Sensitivity, Specificity
+
+## Multiclass Classification
+**Goal**: Predict player position from skill profile
+
+- Model: Multinomial Logistic Regression
+- Evaluation: Confusion Matrix, Class-wise Accuracy
+
+## Clustering
+**Goal**: Reveal natural player groupings
+
+- Technique: K-means clustering (k = 4)
+- Dimensionality reduction: t-SNE for visualization
+
+
+# Results
+## Regression
+- Baseline Linear Model: Adjusted R² = 0.597
+- Lasso reduced redundant predictors (e.g., `vision`, `stamina²`)
+- Best model: XGBoost with MAE = 873K, RMSE = 1.85M, R² = 0.893
+
+## Binary Classification
+- Best model: Random Forest
+- Confusion Matrix:
+  - 3556 Not_Stars correctly identified
+  - 19 Stars correctly identified, 54 missed
+
+## Multiclass Classification
+- Top accuracy in distinct roles (GK, CB)
+- Overlap in similar midfield positions (CM, CDM, CAM)
+
+## Clustering
+- 4 clusters found
+- Cluster 4 (Goalkeepers) uniquely separated
+- Positional overlap in Clusters 1–3
+
+
+# Conclusion
+- We demonstrated that player value and roles can be predicted with reasonable accuracy using machine learning.
+- Classification and clustering reveal how quantitative metrics align with perceived performance.
+- Tools like Lasso, XGBoost, and t-SNE provide interpretable and robust insights for football analytics.
+
+
+
+
+<footer style="text-align:center; font-size:0.8em; color: #888; margin-top: 2em;">
+  FIFA-ANALYSIS By Quarto · <a href="https://github.com/jc3482/fifa-ml-analysis" target="_blank">View on GitHub</a>
+</footer>
