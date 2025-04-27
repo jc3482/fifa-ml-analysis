@@ -18,86 +18,229 @@ format:
 
 We investigate whether data-driven models can predict player market value, identify star players, and classify field positions using the FIFA dataset. Applying regression, classification, and clustering techniques, we uncover patterns in player attributes that help inform player valuation and scouting decisions.
 
-# Introduction
-- **Problem**: Can data science help quantify and classify soccer talent?
-- **Significance**: Accurate modeling helps scouts, analysts, and fans understand player value beyond surface stats.
-- **Background**: Prior studies show player stats can explain market trends and positional dynamics.
-- **Objectives**: Predict market value, classify stars vs. non-stars, classify player position, and cluster players into roles.
+# Introduction 
+
+In recent years, the intersection of data science and professional sports has opened up new avenues for performance evaluation, talent scouting, and market valuation. As the world's most popular sport, soccer offers a rich and complex dataset for quantitative analysis. Worth billions of dollars, soccer player performance metrics and market values are critical to decision-making processes by clubs, agents, and analysts. Accurate prediction of a player's market value, classification of playing positions, and identification of player archetypes can provide a competitive edge in a highly dynamic and financially significant environment.
+
+The primary objectives of our analysis are threefold:
+
+1. To predict a player's market value using supervised learning models
+2. To classify players into on-field positions based on performance-related features
+3. To identify latent archetypes among players through unsupervised learning techniques
+
+To achieve these goals, we implemented a robust machine learning pipeline that incorporates feature selection methods, regularization techniques such as Lasso and Ridge regression, and dimensionality reduction approaches including Principal Component Analysis (PCA) and t-Distributed Stochastic Neighbor Embedding (t-SNE). Model performance was rigorously evaluated using metrics such as Root Mean Squared Error (RMSE), classification accuracy, and silhouette scores for clustering.
+
+This project aims to demonstrate the potential of data-driven approaches in understanding the multifaceted nature of soccer talent. Highlighting the feasibility of modeling complex player-related outcomes, we want to explore the realm of integrating statistical learning techniques in contemporary sports management.
+
+# Literature Review
+
+The **intersection of data science and professional soccer** has catalyzed new avenues for performance evaluation, talent identification, and player valuation. In particular, recent advances in deep learning have enabled more accurate and interpretable models that support both tactical decision-making and economic assessments within the global football industry.
+
+## Market Valuation in Soccer through Machine Learning
+
+Player valuation is a cornerstone of football economics, influencing transfer negotiations, wage structures, and club investment strategies. Huang & Zhang (2023) introduced an explainable **artificial intelligence framework** using Gradient Boosting Decision Trees (GBDT) and Explanations (SHAP) **to predict player market values**. Based on data of over 12,000 players from SoFIFA, Huang & Zhang's model achieved high predictive performance (R² = 0.901), highlighting the importance of fitness, skill, and cognitive metrics in determining player market worth. Optimizing the Boruta algorithm, their feature selection process optimized the model, offered actionable insights for stakeholders.
+
+## Data Science in Performance Optimization and Classification
+
+Beyond market valuation, Obi et al. (2023) emphasized using data science in optimizing athlete performance and refining game strategies. Their model tracked the biomechanical data in athlete's wearables, aiming to provide real-time insights into player movement, endurance, and injury risk. Their model supports both athlete's individual performance and tactical gaming adjustments.
+
+Obi et al. also used **classification models for identifying player archetypes and positional roles**. Classification techniques such as logistic regression, Random Forest, and XGBoost have been applied to label players as elite (e.g., "Star" based on reputation scores) or to categorize them into positional classes using skill-based profiles. The study also explored how dimensionality reduction methods and predictive parametrics enhance both the interpretability of large-scale player datasets.
+
+Both Huang & Zhang and Obi et al. converge on the view that **data science serves as a great tool to interpret player professional evaluation and enhance fan engagement**. Together, they form the methodological and conceptual foundation for our current research into soccer player market value prediction, player famousness classification, and archetype discovery using FIFA player data.
+
+# Data
+
+## Data Collection 
+
+Our study leverages a comprehensive FIFA dataset of over 18,000 professional soccer players, each characterized by 57 features encompassing physical attributes, skill ratings, international reputation, and contract details.
+
+![Feature Correlation Heatmap](1.png)
+
+## Research Goal 1: Predict Player's Market Value (value_eur)
+
+The first research task aimed to predict a player's market value (<span style="color:#1E3A8A">value_eur</span>) using a multivariate regression framework.
+
+- **Dependent Variable**: continuous numerical value of player's estimated market worth in Euros.
+- **Independent variables** consist of a range of player attributes:
+  - Technical skills: <span style="color:#1E3A8A">ball_control, crossing, dribbling</span>
+  - Physical capabilities: <span style="color:#1E3A8A">acceleration, stamina, strength</span>
+  - Cognitive traits: <span style="color:#1E3A8A">vision, positioning, composure</span>
+  - Demographic variables: <span style="color:#1E3A8A">age, international_reputation, weak_foot, skill_moves</span>
+
+These variables were selected based on both their interpretability and theoretical relevance to market valuation, as supported by prior literature and correlation analyses (e.g., as visualized in the heatmap). To address multicollinearity among features, regularization methods such as Lasso and ElasticNet were employed alongside tree-based models for robust comparison.
 
 
+## Research Goal 2: Classify Players as Star if international reputation ≥ 3
 
-# data
-## Dataset Overview
-- Source: FIFA player dataset
-- Size: ~18,000 players
-- Key fields: `value_eur`, `position`, `international_reputation`, `attributes` (acceleration, shot power, dribbling, etc.)
+The second task involved a **binary classification problem**:
 
-## Preprocessing
-- Removed missing/duplicate entries
-- Standardized numeric features (scaling)
-- Categorical conversion for classification (`Star` vs. `Not_Star`)
+- **Dependent Variable**: categorical indicator Star (<span style="color:#1E3A8A">Star = 1</span>) vs Non-Star (<span style="color:#1E3A8A">Star = 0</span>)
+  - Defined based on an international_reputation</span> score of 3 or higher.
+- **Independent variables**: skill-based performance metrics
+  - Technical attributes: <span style="color:#1E3A8A">crossing, finishing, short_passing, volleys, dribbling, ball_control</span>
+  - Physical attributes: <span style="color:#1E3A8A">acceleration, sprint_speed, jumping, strength, stamina</span>
+  - Mental attributes: <span style="color:#1E3A8A">composure, reactions, vision, positioning, aggression</span>
+  - Defensive skills: <span style="color:#1E3A8A">interceptions, marking, standing_tackle, sliding_tackle</span>
 
-## Feature Categories
-- Physical: stamina, strength, sprint_speed
-- Technical: dribbling, ball_control, finishing
-- Mental: vision, composure, reactions
+These features were selected to represent the multidimensional nature of elite performance, and the dataset was cleaned to remove missing values. This classification setup enables a nuanced analysis of what distinguishes internationally reputable players using machine learning classifiers like Logistic Regression, Random Forest, and XGBoost.
 
+## Research Goal 3: Predict Player Position from Skill Profile
 
+The third task required a **multiclass classification** approach to predict a player's on-field position based on their skill profile.
 
-# Methods
-## Regression Task
-**Goal**: Predict player's market value (`value_eur`)
+- **Dependent variable**: categorical label denoting the player's positional role
+  (e.g., Goalkeeper (GK), Defender (DF), Midfielder (MF), or Forward (FW))
+- **Independent variables**: drawn from the player's position relevant skill metrics
+  - Goalkeepers: <span style="color:#1E3A8A">strength</span> and <span style="color:#1E3A8A">reactions</span>
+  - Midfielders: <span style="color:#1E3A8A">passing</span> and <span style="color:#1E3A8A">vision</span>
+  - Forwards: <span style="color:#1E3A8A">finishing</span> and <span style="color:#1E3A8A">acceleration</span>
 
-- **Baseline Model**: Linear regression with squared and interaction terms
-- **Regularization**: Lasso (α = 1) and ElasticNet to reduce multicollinearity
-- **Models Compared**: Linear, Random Forest, XGBoost
+Multinomial Logistic Regression was implemented to handle the multiple class labels, with evaluation based on class-wise accuracy and confusion matrices. This task helps illuminate how specific performance indicators correlate with tactical roles on the pitch.
 
-## Binary Classification
-**Goal**: Classify players as `Star` if international reputation ≥ 3
+## Research Goal 4: Reveal Natural Player Groupings
 
-- Models: Logistic Regression, SVM, Random Forest, XGBoost
-- Evaluation: Confusion Matrix, ROC, Sensitivity, Specificity
+The fourth research goal applied unsupervised learning techniques to discover latent player archetypes based on skill profiles and positional patterns.
 
-## Multiclass Classification
-**Goal**: Predict player position from skill profile
+- **Input Variables (Features)**:
+  - A wide range of player attributes, including technical skills (e.g., <span style="color:#1E3A8A">ball_control, crossing, short_passing</span>), physical traits (e.g., <span style="color:#1E3A8A">acceleration, stamina, strength</span>), and cognitive or tactical features (e.g., <span style="color:#1E3A8A">positioning, vision, composure</span>), were included.
 
-- Model: Multinomial Logistic Regression
-- Evaluation: Confusion Matrix, Class-wise Accuracy
+# Binary Classification
 
-## Clustering
-**Goal**: Reveal natural player groupings
+## Methodology
 
-- Technique: K-means clustering (k = 4)
-- Dimensionality reduction: t-SNE for visualization
+The second binary classification task focused on predicting whether a player would achieve international star status based solely on their skill attributes. To tackle this task, we implemented several statistical learning models, including Regularized Logistic Regression, Support Vector Machines (SVM), Random Forest, and XGBoost. A player was categorized as an international star if their "International Reputation" attribute was greater than or equal to 3. Out of a total of 18,159 players, only 366 met this criterion, representing a mere 2.02%. This small proportion highlights the rarity of globally recognized talent, even among elite athletes, but also introduced a significant class imbalance in the dataset. Hyperparameter optimization was conducted for the ElasticNet model, resulting in optimal parameters of α = 0.5 and λ = 0.001. These optimized settings were used in the final Regularized Logistic Regression model.
 
+## Findings
 
-# Results
-## Regression
-- Baseline Linear Model: Adjusted R² = 0.597
-- Lasso reduced redundant predictors (e.g., `vision`, `stamina²`)
-- Best model: XGBoost with MAE = 873K, RMSE = 1.85M, R² = 0.893
+Despite achieving a high accuracy of 98.32%, the Logistic Regression model's effectiveness must be viewed critically, considering that random guessing would already achieve 97.99%. The model treated "Not Star" as the positive class and "Star" as the negative class. It demonstrated an exceptional Recall rate of 99.69%, correctly identifying nearly all "Not Star" players.
 
-## Binary Classification
-- Best model: Random Forest
-- Confusion Matrix:
-  - 3556 Not_Stars correctly identified
-  - 19 Stars correctly identified, 54 missed
+![Logistic Regression Model Performance](2.png)
 
-## Multiclass Classification
-- Top accuracy in distinct roles (GK, CB)
-- Overlap in similar midfield positions (CM, CDM, CAM)
+The model's Precision was also strong at 98.61%, although given the heavy imbalance favoring non-stars, this metric holds limited interpretive value. The Specificity, however, was only 31.51%, meaning the model correctly identified roughly one-third of actual stars, missing the majority.
 
-## Clustering
-- 4 clusters found
-- Cluster 4 (Goalkeepers) uniquely separated
-- Positional overlap in Clusters 1–3
+The F1 score was high at 0.992, reinforcing the model's strength in recognizing non-stars but weakness in star detection. The Kappa value, at 0.4225, suggests moderate agreement with true labels, and the Balanced Accuracy score of 0.656 shows the model correctly classified about two-thirds of both classes when treated equally.
 
+The Random Forest model achieved an accuracy of 98.4%, slightly higher than Logistic Regression, although this remains close to the non-informed baseline. It demonstrated a Recall rate of 99.75%, again accurately detecting almost all "Not Star" players.
+
+![Random Forest Model Performance](3.png)
+
+Precision stood at 98.64%, very close to that of Logistic Regression. However, the Specificity value, at 32.88%, reveals that Random Forest also struggled to correctly identify true stars, albeit performing slightly better than Logistic Regression in this regard.
+
+The model achieved a marginally higher F1 score of 0.9922, indicating comparable performance in identifying non-stars. Its Kappa statistic was 0.4459, reflecting slightly stronger agreement with the true labels compared to Logistic Regression but still indicating moderate reliability. Finally, its Balanced Accuracy of 0.6631 confirmed a slight improvement over Logistic Regression, with the model correctly classifying approximately two-thirds of both classes when accounting for the data imbalance.
+
+# Multiclass Classification
+
+## Methodology 
+
+To predict players' on-field positions based on their skill profiles, we conducted a multiclass classification analysis using a neural network model. After filtering the dataset, 28 relevant technical and physical attributes were selected as input features. The target variable, player position, was encoded as a categorical factor.
+
+To ensure a balanced and interpretable classification problem, we focused on the ten most frequent player positions. These included roles such as Central Midfielder (CM), Striker (ST), Center Back (CB), Goalkeeper (GK), among others.
+
+We employed a single hidden layer feedforward neural network, consisting of 13 hidden neurons. To mitigate overfitting, L2 regularization (with a weight decay parameter of 0.01) was applied. The output layer used a softmax activation function to facilitate multiclass classification. The model was trained for a maximum of 200 iterations. Predictions on the test set were made by selecting the class with the highest predicted probability, computed as the argmax of the softmax outputs. Model evaluation was performed using a confusion matrix, overall classification accuracy, Kappa statistic, and class-specific sensitivity, specificity, and balanced accuracy metrics.
+
+## Findings 
+
+The neural network model achieved an overall classification accuracy of 69.2% on the held-out test set, with a Kappa statistic of 0.654, indicating substantial agreement beyond chance and a significant improvement over random guessing. Although a 69% accuracy rate may not seem exceptionally high at first glance, it is important to recognize the complexity of the classification task: distinguishing among ten different player positions based solely on technical and physical attributes presents a considerable challenge.
+
+![Neural Network Classification Performance](4.png)
+
+Performance varied notably across player roles. Goalkeepers (GK) were classified with exceptional precision, achieving nearly perfect sensitivity (97.8%), specificity (99.9%), and a balanced accuracy of 99.9%. In practical terms, the model almost never confused goalkeepers with outfield players, reflecting the distinct physical and technical profile of the position. Similarly, Center Backs (CB) and Strikers (ST) were identified with strong performance, achieving sensitivities above 90% and balanced accuracies exceeding 94%, suggesting that defensive and attacking specialists also have unique, easily recognizable skill signatures.
+
+Conversely, midfield roles proved more challenging to predict accurately. Left Midfielders (LM) and Left Backs (LB) achieved lower sensitivities, at 32.9% and 48.1% respectively. This implies that the model struggled to differentiate players operating in adjacent or flexible positions, where the distinction between attacking and defensive responsibilities can blur.
+
+Analysis of the raw and normalized confusion matrices further illuminated these trends. Players labeled as Central Defensive Midfielders (CDM) were frequently misclassified as Central Midfielders (CM), highlighting the fluid nature of central roles on the field. Wide players, such as Left Midfielders (LM) and Right Midfielders (RM), also showed substantial overlap, often being confused with one another or misattributed to central roles.
+
+![Confusion Matrix](5.png)
+
+In contrast, defensive and attacking roles such as Center Backs (CB), Right Backs (RB), Left Backs (LB), Goalkeepers (GK), and Strikers (ST) exhibited much clearer boundaries, with relatively minimal cross-classification. Visualizations of the confusion matrices confirmed these patterns vividly: Goalkeepers achieved 100% correct classification, while CB and ST players were correctly identified approximately 91% and 93% of the time, respectively, reflecting the model's strength in positions where player specialization is more pronounced.
+
+# Regression
+
+## Methodology 
+
+To model and predict the market value of professional soccer players, we employed a sequence of regression approaches ranging from baseline linear models to advanced ensemble techniques. The modeling pipeline began with a polynomial multiple linear regression, which incorporated both linear and quadratic terms for core skill attributes including age, dribbling, reactions, and stamina. This allowed us to capture potential non-linear relationships between player features and market value.
+
+Through the Variance Inflation Factor (VIF) diagnostics, we are able to observe the high multicollinearity in the baseline quadratic regression model. Alternatively, we applied strategies for feature selection and regularization. First, by **forward stepwise selection** iteratively selecting predictors that improved model performance, stopping at a subset of 10 variables, we can then identify a more parsimonious model. Second, by **Lasso regularization** with 5-fold cross-validation; The L1 penalty shrinks irrelevant coefficients to zero, thereby performing automated feature selection.
+
+After selecting the most efficient features, we conducted **3-fold cross-validation on three models: linear regression (LM), random forest (RF), and extreme gradient boosting (XGBoost)** to compare predictive performance more robustly. Each model was trained on the same preprocessed dataset using consistent folds. Performance was evaluated using three metrics: Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and R-squared (R²), which together provide a comprehensive view of prediction accuracy and explained variance.
+
+## Findings
+
+The baseline quadratic regression model explained 59.71% of the variance in player market value (adjusted R² = 0.5969), with all predictors statistically significant. However, the VIF values for predictors and their squared terms exceeded 100 in some cases, indicating severe multicollinearity that complicated coefficient interpretation. Despite this, the model revealed meaningful patterns: age and stamina exhibited an inverted-U relationship with value, while dribbling and reactions showed U-shaped trends. These patterns suggest players may be most highly valued at an optimal age and physical condition, with extremes in technical performance attracting premium valuations.
+
+![Regression Model Patterns](6.png)
+
+To address the multicollinearity, stepwise selection identified a leaner model with predictors such as age, dribbling, reactions, and composure, along with selected quadratic terms. Lasso regularization further verified these findings, highlighting that international reputation, ball control, and stamina are key features. This consistency across selection techniques emphasized the robustness of certain predictors in predicting player market values, particularly reactions and dribbling.
+
+Cross-validated model comparisons revealed clear performance advantages for tree-based ensemble methods. Linear regression, while interpretable, produced the highest error metrics (MAE ≈ €1.70M; RMSE ≈ €3.24M) and the lowest R² ≈ 0.677. Random forest significantly improved prediction accuracy with an increased R² of 0.882. **The best performance was achieved by XGBoost**, yielding the lowest RMSE and the highest R² ≈ 0.894. These results affirm that non-linear, interaction-aware methods are substantially better suited for predicting market value in the context of complex, multi-attribute data like that of professional footballers.
+
+![Model Comparison](7.png)
+
+In summary, while linear models offer transparency and interpretability, ensemble methods such as random forest and XGBoost provide superior predictive power. These models are especially valuable in practical applications where accurate valuation predictions are critical for decision-making in scouting, transfers, and contract negotiations.
+
+# Clustering
+
+## Methodology
+
+To uncover natural groupings among FIFA soccer players, we adopted an unsupervised learning pipeline combining dimensionality reduction and clustering. Our goal was to identify latent player archetypes based purely on performance attributes, without relying on pre-assigned positional labels. We applied this methodology across two versions of the dataset: one including all players (goalkeepers and field players), and the other excluding goalkeepers to isolate patterns among outfield players.
+
+We constructed two distinct datasets. The first retained all players and included goalkeeper-specific features. The second excluded goalkeepers entirely, omitting goalkeeping attributes such as diving and reflexes to better capture the structure of field-based performance. To ensure compatibility with clustering algorithms, all numeric features were normalized using z-score standardization.
+
+To visualize player similarity in a reduced space, we applied t-distributed Stochastic Neighbor Embedding (t-SNE), a non-linear dimensionality reduction technique that preserves local neighborhood structure. The transformed two-dimensional embeddings allowed us to visually inspect the spatial cohesion of player groups.
+
+Clustering was then performed on the scaled feature sets using the K-means algorithm. For the full dataset, we tested several values of k and selected k=4 to account for the distinct statistical profile of goalkeepers. For the field-player-only dataset, we explored k-values between 2 and 5 and selected k=3 based on the balance between interpretability, separation of cluster centroids, and alignment with known field positions. Cluster assignments were projected back into the t-SNE space and analyzed with respect to player position and skill profile centroids.
+
+## Findings
+
+Clustering the complete dataset with k = 4 revealed strong alignment between unsupervised groups and positional roles. One of the clearest outcomes was the emergence of a distinct goalkeeper cluster. This group (cluster 4) was composed entirely of goalkeepers, characterized by extremely high scores in attributes such as gk_diving, gk_handling, and gk_positioning, and uniformly low values on all field-oriented metrics. Visually, this cluster formed a dense, isolated region in the t-SNE embedding, confirming its separability from the rest of the player pool.
+
+![Clustering All Players](8.png)
+
+The remaining three clusters captured meaningful variation among field players. Cluster 2 consisted predominantly of defenders (77%), marked by low dribbling and finishing skills but strong tackling and physicality. Cluster 3, with the highest average overall rating (71.5), showed superior performance across technical and creative attributes such as short passing, dribbling, and reactions, suggesting elite central midfielders. Cluster 1 represented a hybrid group comprising both midfielders and forwards. These players excelled in speed and finishing but showed more moderate values for defensive traits, aligning with offensive or transitional roles such as wingers or attacking midfielders.
+
+To more deeply explore relationships among outfield players, we reran the clustering on the field-player-only dataset, this time selecting k = 3. The resulting clusters were well separated and displayed distinct skill signatures. Cluster 3 stood out as the most offensively and technically proficient group, with high scores across acceleration, ball control, passing, and stamina. This cluster likely includes forwards and advanced playmakers. Cluster 1 showed more balanced attributes but relatively lower defensive values, corresponding to generalists or wide-position players. Cluster 2 exhibited low offensive and technical metrics but excelled in marking, standing tackle, and strength—traits typical of defensive specialists such as center backs and holding midfielders.
+
+![Clustering Field Players](9.png)
+
+Throughout this discovery process, we compared different values of k to assess both visual coherence in t-SNE space and statistical separation among centroids. Initially, we experimented with k=3 for the full dataset. However, we found that goalkeeper features introduced excessive heterogeneity, diluting cluster interpretability. By increasing to k=4, we successfully isolated goalkeepers into a dedicated cluster and achieved cleaner subgroup distinctions. For the field-player subset, k=3 provided a natural structure aligned with modern football roles: attack, midfield, and defense. Higher values of k introduced fragmentation without offering clearer insight.
+
+In sum, our clustering analysis revealed that player roles naturally emerge from underlying performance data. The models effectively captured both well-defined role boundaries (e.g., goalkeepers) and more fluid transitions between field positions. This data-driven perspective supports practical applications such as scouting, player development, and tactical planning in professional football.
+
+# Discussion
+
+Our project aim to answer three core questions:
+
+1. Can we predict a player's market value from their skill attributes?
+2. Can we distinguish superstar players based on data alone?
+3. Can we identify natural groupings among players without using predefined positions?
+
+Through a combination of regression analysis, unsupervised clustering, and both binary and multiclass classification models, we found that the FIFA player data holds rich, interpretable structure that supports all three goals, though the process were not without challenges.
+
+Our regression analysis revealed that a player's value is strongly shaped by a mix of physical, technical, and cognitive attributes, with non-linear relationships playing a significant role. A baseline polynomial regression model explained about 60% of the variation in player value (adjusted R² = 0.597), but also revealed severe multicollinearity among squared terms. We offset this flaw using forward stepwise selection and Lasso regularization methods. Retaining variables like age, reactions, dribbling, and composure, our final regression model suggested that player maturity, control, and agility were key identifiers in their corresponding market values. To further improve the model accuracy, we used the three machine learning parametric models where random forest and XGBoost outperformed the original linear model. XGBoost achieving the best performance (R² = 0.893). These results demonstrate that high-dimensional, interaction-aware models are better suited to predict complex market behaviors like player valuation, comparing to scalar linear regression.
+
+The clustering model used t-SNE and K-means to explore natural groupings among players without using position labels. When all players were included, goalkeepers naturally emerged as a distinct cluster, validating the method. Among field players, a three-cluster solution aligned loosely with offensive, midfield, and defensive profiles. The fact that these clusters aligned with position categories demonstrates the extent to which player roles are reflected in raw skill attributes.
+
+In the context of multiclass classification, the neural network achieved an accuracy of 69.2% in predicting player positions across ten of the most common roles. The strongest performances were observed for highly specialized positions, such as Goalkeepers (GK) and Center Backs (CB), where distinctive skill patterns made classification more straightforward. However, midfield roles — particularly Left Midfielders (LM), Right Midfielders (RM), and Central Defensive Midfielders (CDM) — presented greater challenges, as their overlapping skill profiles led to more frequent misclassifications. Despite this, the incorporation of feature scaling and L2 regularization mitigated overfitting risks and allowed the model to generalize reasonably well across different player types, as evidenced by the Kappa statistic of 0.654.
+
+Throughout the project, we faced several challenges. Feature multicollinearity initially limited the interpretability of initial regression coefficients, which we addressed through lasso regularization and subset selection. Class imbalance in the binary classification task made it difficult to train models that confidently predict rare stars, leading us to prioritize models with high specificity. And positional overlaps in the multiclass setting highlighted limitations in categorical classification schemes themselves. These challenges also underscored an important insight: players are more than static roles, they are dynamic profiles shaped by complex blends of ability, experience, and context.
 
 # Conclusion
-- We demonstrated that player value and roles can be predicted with reasonable accuracy using machine learning.
-- Classification and clustering reveal how quantitative metrics align with perceived performance.
-- Tools like Lasso, XGBoost, and t-SNE provide interpretable and robust insights for football analytics.
 
+To conclude, our results show that it is indeed possible to extract meaningful insights about soccer players' value, status, and roles directly from performance data. By combining unsupervised learning techniques to uncover patterns and supervised learning models to make accurate predictions, we were able to answer our original research questions with both predictive strength and interpretability.
+
+Our project demonstrates how data science can illuminate the world of soccer with the power of objective, analytical tools. From predicting market values to uncovering player archetypes and identifying the rare emergence of superstar potential, we reveal how skill attributes, typically locked away in raw numbers, can tell vivid stories about an athlete's journey.
+
+Yet while we build models behind screens, tuning hyperparameters and optimizing algorithms, it is important to remember the true essence of the sport: the motion, the teamwork, the passion, the heartbreaks, and the pure joy of the game. Behind every datapoint is a living athlete, shaped by relentless grit, personal goals, and unbreakable resiliency. Data science allows us to view soccer through a new lens, but the human spirit behind the numbers remains irreplaceable.
+
+There is ample opportunity for future work to build upon this foundation. Integrating real-world player transfer histories, detailed match performance statistics, or broader athletic metrics such as injury records, fitness tracking, and even psychological profiles could enrich player valuation models further. Hybrid approaches that combine statistical modeling with domain-specific sports expertise could lead to even deeper and more practical insights for clubs, scouts, and analysts.
+
+Ultimately, this project stands as an example of how bridging data science with sports can open new ways of seeing, understanding, and celebrating the game. Whether grinding through lines of code or designing strategies on the pitch, the worlds of data and sport share a common thread: a relentless pursuit of excellence.
+
+# References
+
+Obi, O. C., Dawodu, S. O., Onwusinkwue, S., Osasona, F., Atadoga, A., & Daraojimba, A. I. (2024). Data science in sports analytics: A review of performance optimization and fan engagement. *World Journal of Advanced Research and Reviews*, 21(1), 2663–2670. https://doi.org/10.30574/wjarr.2024.21.1.0370
+
+Huang, C., & Zhang, S. (2023, November 27). Explainable artificial intelligence model for identifying market value in professional soccer players [Preprint]. Zhili College & Tsinghua University.
 
 
 
