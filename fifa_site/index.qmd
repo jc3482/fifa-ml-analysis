@@ -9,6 +9,7 @@ abstract: |
 keywords: [FIFA, Soccer Analytics, Regression, Classification, Clustering]
 format:
   html:
+    css: custom.css
     embed-resources: true
     toc: true
     theme: cosmo
@@ -54,7 +55,7 @@ Both Huang & Zhang and Obi et al. converge on the view that **data science serve
 
 Our study leverages a comprehensive FIFA dataset of over 18,000 professional soccer players, each characterized by 57 features encompassing physical attributes, skill ratings, international reputation, and contract details.
 
-![Feature Correlation Heatmap](1.png)
+![Feature Correlation Heatmap](pics/1.png){width=80%}
 
 ## Research Goal 1: Predict Player's Market Value (value_eur)
 
@@ -114,7 +115,7 @@ The second binary classification task focused on predicting whether a player wou
 
 Despite achieving a high accuracy of 98.32%, the Logistic Regression model's effectiveness must be viewed critically, considering that random guessing would already achieve 97.99%. The model treated "Not Star" as the positive class and "Star" as the negative class. It demonstrated an exceptional Recall rate of 99.69%, correctly identifying nearly all "Not Star" players.
 
-![Logistic Regression Model Performance](2.png)
+![Logistic Regression Model Performance](pics/2.png)
 
 The model's Precision was also strong at 98.61%, although given the heavy imbalance favoring non-stars, this metric holds limited interpretive value. The Specificity, however, was only 31.51%, meaning the model correctly identified roughly one-third of actual stars, missing the majority.
 
@@ -122,7 +123,7 @@ The F1 score was high at 0.992, reinforcing the model's strength in recognizing 
 
 The Random Forest model achieved an accuracy of 98.4%, slightly higher than Logistic Regression, although this remains close to the non-informed baseline. It demonstrated a Recall rate of 99.75%, again accurately detecting almost all "Not Star" players.
 
-![Random Forest Model Performance](3.png)
+![Random Forest Model Performance](pics/3.png)
 
 Precision stood at 98.64%, very close to that of Logistic Regression. However, the Specificity value, at 32.88%, reveals that Random Forest also struggled to correctly identify true stars, albeit performing slightly better than Logistic Regression in this regard.
 
@@ -142,7 +143,7 @@ We employed a single hidden layer feedforward neural network, consisting of 13 h
 
 The neural network model achieved an overall classification accuracy of 69.2% on the held-out test set, with a Kappa statistic of 0.654, indicating substantial agreement beyond chance and a significant improvement over random guessing. Although a 69% accuracy rate may not seem exceptionally high at first glance, it is important to recognize the complexity of the classification task: distinguishing among ten different player positions based solely on technical and physical attributes presents a considerable challenge.
 
-![Neural Network Classification Performance](4.png)
+![Neural Network Classification Performance](pics/4.png)
 
 Performance varied notably across player roles. Goalkeepers (GK) were classified with exceptional precision, achieving nearly perfect sensitivity (97.8%), specificity (99.9%), and a balanced accuracy of 99.9%. In practical terms, the model almost never confused goalkeepers with outfield players, reflecting the distinct physical and technical profile of the position. Similarly, Center Backs (CB) and Strikers (ST) were identified with strong performance, achieving sensitivities above 90% and balanced accuracies exceeding 94%, suggesting that defensive and attacking specialists also have unique, easily recognizable skill signatures.
 
@@ -150,7 +151,7 @@ Conversely, midfield roles proved more challenging to predict accurately. Left M
 
 Analysis of the raw and normalized confusion matrices further illuminated these trends. Players labeled as Central Defensive Midfielders (CDM) were frequently misclassified as Central Midfielders (CM), highlighting the fluid nature of central roles on the field. Wide players, such as Left Midfielders (LM) and Right Midfielders (RM), also showed substantial overlap, often being confused with one another or misattributed to central roles.
 
-![Confusion Matrix](5.png)
+![Confusion Matrix](pics/5.png){width=80%}
 
 In contrast, defensive and attacking roles such as Center Backs (CB), Right Backs (RB), Left Backs (LB), Goalkeepers (GK), and Strikers (ST) exhibited much clearer boundaries, with relatively minimal cross-classification. Visualizations of the confusion matrices confirmed these patterns vividly: Goalkeepers achieved 100% correct classification, while CB and ST players were correctly identified approximately 91% and 93% of the time, respectively, reflecting the model's strength in positions where player specialization is more pronounced.
 
@@ -168,13 +169,13 @@ After selecting the most efficient features, we conducted **3-fold cross-validat
 
 The baseline quadratic regression model explained 59.71% of the variance in player market value (adjusted R² = 0.5969), with all predictors statistically significant. However, the VIF values for predictors and their squared terms exceeded 100 in some cases, indicating severe multicollinearity that complicated coefficient interpretation. Despite this, the model revealed meaningful patterns: age and stamina exhibited an inverted-U relationship with value, while dribbling and reactions showed U-shaped trends. These patterns suggest players may be most highly valued at an optimal age and physical condition, with extremes in technical performance attracting premium valuations.
 
-![Regression Model Patterns](6.png)
+![Regression Model Patterns](pics/6.png)
 
 To address the multicollinearity, stepwise selection identified a leaner model with predictors such as age, dribbling, reactions, and composure, along with selected quadratic terms. Lasso regularization further verified these findings, highlighting that international reputation, ball control, and stamina are key features. This consistency across selection techniques emphasized the robustness of certain predictors in predicting player market values, particularly reactions and dribbling.
 
 Cross-validated model comparisons revealed clear performance advantages for tree-based ensemble methods. Linear regression, while interpretable, produced the highest error metrics (MAE ≈ €1.70M; RMSE ≈ €3.24M) and the lowest R² ≈ 0.677. Random forest significantly improved prediction accuracy with an increased R² of 0.882. **The best performance was achieved by XGBoost**, yielding the lowest RMSE and the highest R² ≈ 0.894. These results affirm that non-linear, interaction-aware methods are substantially better suited for predicting market value in the context of complex, multi-attribute data like that of professional footballers.
 
-![Model Comparison](7.png)
+![Model Comparison](pics/7.png){width=50%}
 
 In summary, while linear models offer transparency and interpretability, ensemble methods such as random forest and XGBoost provide superior predictive power. These models are especially valuable in practical applications where accurate valuation predictions are critical for decision-making in scouting, transfers, and contract negotiations.
 
@@ -194,13 +195,13 @@ Clustering was then performed on the scaled feature sets using the K-means algor
 
 Clustering the complete dataset with k = 4 revealed strong alignment between unsupervised groups and positional roles. One of the clearest outcomes was the emergence of a distinct goalkeeper cluster. This group (cluster 4) was composed entirely of goalkeepers, characterized by extremely high scores in attributes such as gk_diving, gk_handling, and gk_positioning, and uniformly low values on all field-oriented metrics. Visually, this cluster formed a dense, isolated region in the t-SNE embedding, confirming its separability from the rest of the player pool.
 
-![Clustering All Players](8.png)
+![Clustering All Players](pics/8.png)
 
 The remaining three clusters captured meaningful variation among field players. Cluster 2 consisted predominantly of defenders (77%), marked by low dribbling and finishing skills but strong tackling and physicality. Cluster 3, with the highest average overall rating (71.5), showed superior performance across technical and creative attributes such as short passing, dribbling, and reactions, suggesting elite central midfielders. Cluster 1 represented a hybrid group comprising both midfielders and forwards. These players excelled in speed and finishing but showed more moderate values for defensive traits, aligning with offensive or transitional roles such as wingers or attacking midfielders.
 
 To more deeply explore relationships among outfield players, we reran the clustering on the field-player-only dataset, this time selecting k = 3. The resulting clusters were well separated and displayed distinct skill signatures. Cluster 3 stood out as the most offensively and technically proficient group, with high scores across acceleration, ball control, passing, and stamina. This cluster likely includes forwards and advanced playmakers. Cluster 1 showed more balanced attributes but relatively lower defensive values, corresponding to generalists or wide-position players. Cluster 2 exhibited low offensive and technical metrics but excelled in marking, standing tackle, and strength—traits typical of defensive specialists such as center backs and holding midfielders.
 
-![Clustering Field Players](9.png)
+![Clustering Field Players](pics/9.png)
 
 Throughout this discovery process, we compared different values of k to assess both visual coherence in t-SNE space and statistical separation among centroids. Initially, we experimented with k=3 for the full dataset. However, we found that goalkeeper features introduced excessive heterogeneity, diluting cluster interpretability. By increasing to k=4, we successfully isolated goalkeepers into a dedicated cluster and achieved cleaner subgroup distinctions. For the field-player subset, k=3 provided a natural structure aligned with modern football roles: attack, midfield, and defense. Higher values of k introduced fragmentation without offering clearer insight.
 
