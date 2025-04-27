@@ -43,7 +43,7 @@ We apply multiple statistical learning techniques including feature selection, r
 ## 2. Data Loading and Cleaning
 
 ```{r}
-data <- read_csv("fifa_stats.csv") %>%
+data <- read_csv("./data/fifa_eda_stats.csv") %>%
   clean_names()
 
 # Clean currency columns
@@ -100,6 +100,88 @@ summary(lm_quad)
 
 vif(lm_quad)
 ```
+```{r}
+library(broom)
+library(car)
+library(dplyr)
+library(knitr)
+
+# Fit the model
+lm_quad <- lm(value_eur ~ age + age2 + dribbling + dribbling2 + reactions + reactions2 + stamina + stamina2, data = lm_data)
+
+# Get tidy summary
+reg_summary <- tidy(lm_quad)
+
+# Add VIFs
+vif_values <- vif(lm_quad) %>% as.data.frame() %>%
+  tibble::rownames_to_column("term") %>%
+  rename(VIF = ".")
+
+# Combine tidy summary with VIFs
+final_table <- reg_summary %>%
+  left_join(vif_values, by = "term") %>%
+  select(term, estimate, std.error, statistic, p.value, VIF)
+
+# Print nicely in Markdown/Quarto
+kable(final_table, digits = 3, caption = "Table: Regression Summary with VIFs")
+
+```
+
+```{r}
+library(ggplot2)
+
+# Create a base template holding other variables at mean
+template <- data.frame(
+  age = mean(lm_data$age),
+  dribbling = mean(lm_data$dribbling),
+  reactions = mean(lm_data$reactions),
+  stamina = mean(lm_data$stamina)
+)
+
+# Add quadratic terms
+template$age2 <- template$age^2
+template$dribbling2 <- template$dribbling^2
+template$reactions2 <- template$reactions^2
+template$stamina2 <- template$stamina^2
+
+# Function to create prediction plot for a single variable
+library(scales)  # for label formatting
+
+# Updated version of the plotting function
+plot_partial_effect <- function(var, range = NULL) {
+  values <- if (is.null(range)) seq(min(lm_data[[var]]), max(lm_data[[var]]), length.out = 100)
+            else seq(range[1], range[2], length.out = 100)
+
+  df <- template[rep(1, length(values)), ]
+  df[[var]] <- values
+  df[[paste0(var, "2")]] <- values^2
+  df$predicted_value <- predict(lm_quad, newdata = df)
+
+  ggplot(df, aes_string(x = var, y = "predicted_value")) +
+    geom_line(color = "#2E86AB", size = 1.2) +
+    scale_y_continuous(labels = label_number(scale = 1e-6, suffix = "M €")) +
+    labs(
+      title = paste("Effect of", var),
+      y = "Predicted Value",
+      x = var
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(size = 14, face = "bold"),
+      axis.title = element_text(size = 12)
+    )
+}
+
+# Example: plot_partial_effect("age")
+# Use lapply to create plots for all 4 variables
+library(patchwork)  # for arranging plots
+plots <- lapply(c("age", "dribbling", "reactions", "stamina"), plot_partial_effect)
+
+# Combine and display
+wrap_plots(plots, ncol = 2)
+
+
+```
 
 ### 3.4 Feature Selection
 
@@ -107,6 +189,10 @@ vif(lm_quad)
 
 best_forward_model <- regsubsets(value_eur ~ ., data = lm_data, nvmax = 10, method = "forward")
 summary(best_forward_model)
+```
+
+```{r}
+summary(best_forward_model)$which
 ```
 ```{r}
 library(glmnet)
@@ -144,6 +230,27 @@ xgb_model <- train(value_eur ~ ., data = train_data, method = "xgbTree", trContr
 resamples(list(LM = lm_model, RF = rf_model, XGB = xgb_model)) %>% summary()
 ``` 
 
+```{r}
+library(tibble)
+library(knitr)
+
+# Manually enter the summary metrics
+performance_tbl <- tibble::tibble(
+  Model = c("Linear Regression", "Random Forest", "XGBoost"),
+  MAE = c(1.70, 0.79, 0.87),      # In millions €
+  RMSE = c(3.24, 1.95, 1.85),     # In millions €
+  R_squared = c(0.677, 0.882, 0.894)
+)
+
+# Create a table with nice formatting
+knitr::kable(
+  performance_tbl,
+  digits = 2,
+  caption = "Table: Model Performance Comparison (3-fold Cross-Validation)",
+  col.names = c("Model", "MAE", "RMSE", "R²")
+)
+
+```
 ---
 
 ## 4. Classification: Predicting Preferred Foot
